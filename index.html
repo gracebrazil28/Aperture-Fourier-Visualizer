@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antenna Aperture Visualizer</title>
+<style>
+:root{
+  --bg:#ffffff;--surface:#f6f5f2;--text:#0b0b0b;--text2:#52514e;--muted:#898781;
+  --border:rgba(11,11,11,.18);--accent-bg:#e6f1fb;--accent-text:#185fa5;--accent-border:#85b7eb;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141413;--surface:#1f1f1d;--text:#f0efec;--text2:#c3c2b7;--muted:#898781;
+    --border:rgba(255,255,255,.2);--accent-bg:#0c447c;--accent-text:#e6f1fb;--accent-border:#378add;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:560px;margin:0 auto;padding:1.25rem}
+h1{font-size:20px;font-weight:500;margin:0 0 1rem}
+.lbl{font-size:13px;color:var(--text2);margin:0 0 6px}
+button{font:inherit;font-size:13px;padding:5px 12px;border-radius:8px;border:1px solid var(--border);
+  background:transparent;color:var(--text);cursor:pointer}
+button.on{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent-border)}
+input[type=range]{flex:1;accent-color:#2a78d6}
+.mc{background:var(--surface);border-radius:8px;padding:10px 12px}
+.mc p{margin:0}
+canvas{display:block;width:100%}
+</style>
+</head>
+<body>
+<main>
+<h1>Antenna aperture as a Fourier transform</h1>
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+  <label for="d" style="font-size:14px;color:var(--text2)">Diameter</label>
+  <input type="range" id="d" min="3" max="50" step="1" value="10">
+  <span id="dout" style="font-size:14px;font-weight:500;min-width:44px;text-align:right">10λ</span>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+  <div style="display:flex;gap:6px"><button id="bu" class="on">Uniform</button><button id="bt">Tapered</button></div>
+  <div style="display:flex;gap:6px"><button id="blin" class="on">Linear</button><button id="bdb">dB</button></div>
+</div>
+
+<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px">
+  <div><p class="lbl">Aperture illumination</p>
+    <canvas id="ca" style="aspect-ratio:1;border-radius:8px" aria-label="Aperture illumination"></canvas></div>
+  <div><p class="lbl">Far field, ±30°, dB</p>
+    <canvas id="cf" style="aspect-ratio:1;border-radius:8px" aria-label="2D far-field pattern"></canvas></div>
+</div>
+
+<p class="lbl" style="margin-top:16px">Power pattern cut through the beam</p>
+<div style="position:relative;height:220px"><canvas id="cp" style="height:100%" aria-label="Power vs angle"></canvas></div>
+
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px">
+  <div class="mc"><p style="font-size:12px;color:var(--text2)">Half-power beam</p>
+    <p id="m1" style="font-size:18px;font-weight:500">–</p><p id="m1b" style="font-size:12px;color:var(--muted)"></p></div>
+  <div class="mc"><p style="font-size:12px;color:var(--text2)">First null</p>
+    <p id="m2" style="font-size:18px;font-weight:500">–</p><p id="m2b" style="font-size:12px;color:var(--muted)"></p></div>
+  <div class="mc"><p style="font-size:12px;color:var(--text2)">First sidelobe</p>
+    <p id="m3" style="font-size:18px;font-weight:500">–</p><p style="font-size:12px;color:var(--muted)">rel. to peak</p></div>
+</div>
+</main>
+
+<script>
+// Bessel functions J0, J1 (Numerical Recipes rational approximations)
+function j0(x){
+  const ax=Math.abs(x);
+  if(ax<8){const y=x*x;
+    const a=57568490574.0+y*(-13362590354.0+y*(651619640.7+y*(-11214424.18+y*(77392.33017+y*(-184.9052456)))));
+    const b=57568490411.0+y*(1029532985.0+y*(9494680.718+y*(59272.64853+y*(267.8532712+y))));
+    return a/b;}
+  const z=8/ax,y=z*z,xx=ax-0.785398164;
+  const a=1+y*(-0.1098628627e-2+y*(0.2734510407e-4+y*(-0.2073370639e-5+y*0.2093887211e-6)));
+  const b=-0.1562499995e-1+y*(0.1430488765e-3+y*(-0.6911147651e-5+y*(0.7621095161e-6-y*0.934935152e-7)));
+  return Math.sqrt(0.636619772/ax)*(Math.cos(xx)*a-z*Math.sin(xx)*b);
+}
+function j1(x){
+  const ax=Math.abs(x);
+  if(ax<8){const y=x*x;
+    const a=x*(72362614232.0+y*(-7895059235.0+y*(242396853.1+y*(-2972611.439+y*(15704.48260+y*(-30.16036606))))));
+    const b=144725228442.0+y*(2300535178.0+y*(18583304.74+y*(99447.43394+y*(376.9991397+y))));
+    return a/b;}
+  const z=8/ax,y=z*z,xx=ax-2.356194491;
+  const a=1+y*(0.183105e-2+y*(-0.3516396496e-4+y*(0.2457520174e-5+y*(-0.240337019e-6))));
+  const b=0.04687499995+y*(-0.2002690873e-3+y*(0.8449199096e-5+y*(-0.88228987e-6+y*0.105787412e-6)));
+  const r=Math.sqrt(0.636619772/ax)*(Math.cos(xx)*a-z*Math.sin(xx)*b);
+  return x<0?-r:r;
+}
+
+// Normalized far-field amplitude, x = pi*(D/lambda)*sin(theta)
+// uniform: 2 J1(x)/x      tapered (1-r^2): 8 J2(x)/x^2
+function amp(x,tapered){
+  x=Math.abs(x);
+  if(!tapered) return x<1e-6?1:2*j1(x)/x;
+  if(x<0.3) return 1-x*x/12;
+  const J2=2*j1(x)/x-j0(x);
+  return 8*J2/(x*x);
+}
+
+const S={D:10,t:0,db:0};
+const SM=Math.sin(30*Math.PI/180);
+const isDark=()=>matchMedia('(prefers-color-scheme: dark)').matches;
+
+// Precomputed lookup table for speed
+const DX=0.005, XM=Math.PI*50*SM*1.5+5, LUT=[[],[]];
+for(let t=0;t<2;t++) for(let x=0;x<=XM;x+=DX) LUT[t].push(amp(x,t));
+const L=(x,t)=>LUT[t][Math.min(Math.round(Math.abs(x)/DX),LUT[t].length-1)];
+
+function ramp(v,dk){
+  const s=dk?[[26,26,25],[12,68,124],[133,183,235],[230,241,251]]
+            :[[252,252,251],[181,212,244],[55,138,221],[12,68,124]];
+  v=Math.max(0,Math.min(1,v))*3;
+  const i=Math.min(2,Math.floor(v)),f=v-i,a=s[i],b=s[i+1];
+  return [a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f];
+}
+function setup(c){
+  const r=c.getBoundingClientRect(),d=window.devicePixelRatio||1;
+  c.width=Math.max(1,Math.round(r.width*d)); c.height=Math.max(1,Math.round(r.height*d));
+  return c.getContext('2d');
+}
+function putPx(img,W,i,j,col){const k=4*(j*W+i);img.data[k]=col[0];img.data[k+1]=col[1];img.data[k+2]=col[2];img.data[k+3]=255;}
+
+function drawAperture(){
+  const c=document.getElementById('ca'),g=setup(c),W=c.width,dk=isDark(),d=window.devicePixelRatio||1;
+  const img=g.createImageData(W,W),R=(S.D/50)*0.46*W,cx=W/2,bg=ramp(0,dk);
+  for(let j=0;j<W;j++)for(let i=0;i<W;i++){
+    const rr=Math.hypot(i-cx+0.5,j-cx+0.5)/R;
+    putPx(img,W,i,j, rr<=1 ? ramp(0.15+0.85*(S.t?1-rr*rr:1),dk) : bg);
+  }
+  g.putImageData(img,0,0);
+  g.strokeStyle=dk?'#85B7EB':'#185FA5'; g.lineWidth=d;
+  g.beginPath(); g.arc(cx,cx,R,0,2*Math.PI); g.stroke();
+  g.fillStyle=dk?'#c3c2b7':'#52514e'; g.font=(12*d)+'px sans-serif';
+  g.textAlign='center'; g.fillText('D = '+S.D+'λ',cx,W-8*d);
+  const lp=Math.max(2*0.46*W/50,2*d);          // one wavelength, to scale
+  g.fillRect(8*d,8*d,lp,3*d); g.textAlign='left'; g.fillText('λ',8*d+lp+4*d,13*d);
+}
+
+function drawFarField(){
+  const c=document.getElementById('cf'),g=setup(c),W=c.width,dk=isDark();
+  const img=g.createImageData(W,W),cx=W/2;
+  for(let j=0;j<W;j++)for(let i=0;i<W;i++){
+    const u=(i-cx+0.5)/cx*SM, v=(j-cx+0.5)/cx*SM, s=Math.hypot(u,v);
+    let val=0;
+    if(s<1){const a=L(Math.PI*S.D*s,S.t),db=10*Math.log10(Math.max(a*a,1e-6)); val=Math.max(0,(db+40)/40);}
+    putPx(img,W,i,j,ramp(val,dk));
+  }
+  g.putImageData(img,0,0);
+}
+
+function drawPlot(){
+  const c=document.getElementById('cp'),g=setup(c),W=c.width,H=c.height,d=window.devicePixelRatio||1,dk=isDark();
+  const ml=36*d,mr=8*d,mt=8*d,mb=22*d,pw=W-ml-mr,ph=H-mt-mb;
+  const ymap=S.db?(p=>mt+ph*(-Math.max(10*Math.log10(Math.max(p,1e-8)),-40))/40):(p=>mt+ph*(1-p));
+  g.clearRect(0,0,W,H); g.font=(11*d)+'px sans-serif'; g.fillStyle='#898781';
+  g.strokeStyle=dk?'#2c2c2a':'#e1e0d9'; g.lineWidth=d;
+  (S.db?[0,-10,-20,-30,-40]:[1,0.75,0.5,0.25,0]).forEach(y=>{
+    const yy=S.db?mt+ph*(-y/40):mt+ph*(1-y);
+    g.beginPath(); g.moveTo(ml,yy); g.lineTo(W-mr,yy); g.stroke();
+    g.textAlign='right'; g.fillText(S.db?String(y):y.toFixed(2),ml-5*d,yy+4*d);
+  });
+  g.textAlign='center';
+  [-30,-20,-10,0,10,20,30].forEach(a=>g.fillText(a+'°',ml+pw*(a+30)/60,H-6*d));
+  if(!S.db){ // half-power line
+    g.setLineDash([4*d,4*d]); g.strokeStyle=dk?'#c98500':'#eda100';
+    const yy=ymap(0.5); g.beginPath(); g.moveTo(ml,yy); g.lineTo(W-mr,yy); g.stroke(); g.setLineDash([]);
+  }
+  g.strokeStyle=dk?'#3987e5':'#2a78d6'; g.lineWidth=2*d; g.lineJoin='round'; g.beginPath();
+  const N=Math.round(pw);
+  for(let n=0;n<=N;n++){
+    const th=(-30+60*n/N)*Math.PI/180, a=L(Math.PI*S.D*Math.sin(th),S.t);
+    const xx=ml+n*pw/N, yy=ymap(a*a); n?g.lineTo(xx,yy):g.moveTo(xx,yy);
+  }
+  g.stroke();
+}
+
+function metrics(){
+  const t=S.t,D=S.D; let xh=null,xn=null,sl=0,prev=LUT[t][0];
+  for(let i=1;i<LUT[t].length;i++){
+    const x=i*DX,a=LUT[t][i];
+    if(xh===null&&a*a<0.5) xh=x;
+    if(xn===null&&prev>0&&a<=0) xn=x;
+    else if(xn!==null&&Math.sign(a)!==Math.sign(prev)) break;   // reached second null
+    if(xn!==null) sl=Math.max(sl,a*a);
+    prev=a;
+  }
+  const ang=x=>{const s=x/(Math.PI*D);return s>=1?null:Math.asin(s)*180/Math.PI;};
+  const h=ang(xh),n=ang(xn);
+  document.getElementById('m1').textContent=h?(2*h).toFixed(2)+'°':'–';
+  document.getElementById('m1b').textContent=(2*xh/Math.PI).toFixed(2)+' λ/D';
+  document.getElementById('m2').textContent=n?n.toFixed(2)+'°':'beyond 90°';
+  document.getElementById('m2b').textContent=(xn/Math.PI).toFixed(2)+' λ/D';
+  document.getElementById('m3').textContent=(10*Math.log10(sl)).toFixed(1)+' dB';
+}
+
+function render(){
+  document.getElementById('dout').textContent=S.D+'λ';
+  drawAperture(); drawFarField(); drawPlot(); metrics();
+}
+document.getElementById('d').addEventListener('input',e=>{S.D=+e.target.value;render();});
+function pick(on,off,f){document.getElementById(on).classList.add('on');document.getElementById(off).classList.remove('on');f();render();}
+document.getElementById('bu').onclick=()=>pick('bu','bt',()=>S.t=0);
+document.getElementById('bt').onclick=()=>pick('bt','bu',()=>S.t=1);
+document.getElementById('blin').onclick=()=>pick('blin','bdb',()=>S.db=0);
+document.getElementById('bdb').onclick=()=>pick('bdb','blin',()=>S.db=1);
+window.addEventListener('resize',render);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
+render();
+</script>
+</body>
+</html>
