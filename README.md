@@ -1,7 +1,7 @@
 # Antenna Aperture as a Fourier Transform
 
 An interactive, single-file visualizer showing how the illumination across a circular antenna aperture determines its far-field radiation pattern. Drag the diameter slider or switch the illumination taper, and the beam, nulls and sidelobes update in real time.
-Sample view here: https://gracebrazil28.github.io/Diffraction-Theory-Visualizer/
+Sample view here: [https://gracebrazil28.github.io/Diffraction-Theory-Visualizer/](https://gracebrazil28.github.io/Aperture-Fourier-Visualizer/)
 
 ## Features
 
